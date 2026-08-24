@@ -403,7 +403,7 @@
       return false;
     }
 
-    if (isGoogleFormsStandaloneNameField(descriptor, allFields)) {
+    if (isGoogleFormsStandaloneNameField(descriptor)) {
       return true;
     }
 
@@ -414,25 +414,21 @@
     return !hasSplitNameFields;
   }
 
-  function isGoogleFormsStandaloneNameField(descriptor, allFields) {
+  function isGoogleFormsStandaloneNameField(descriptor) {
     if (!isGoogleFormsPage) {
       return false;
     }
 
     const questionText = descriptor.questionText || "";
-    if (!questionText || !/^name\b/.test(questionText)) {
-      return false;
-    }
+    const context = descriptor.context || "";
 
-    const hasSplitNameFields =
-      allFields.some((field) => matchesPatterns(field.context, FIELD_PATTERNS.firstName)) &&
-      allFields.some((field) => matchesPatterns(field.context, FIELD_PATTERNS.lastName));
-
-    if (!hasSplitNameFields) {
+    if (/^name\b/.test(questionText) && !/\b(first|last|full)\s*name\b/.test(questionText)) {
       return true;
     }
 
-    return matchesPatterns(descriptor.context, FIELD_PATTERNS.fullName);
+    return /\bname\b/.test(context) &&
+      !/\b(first|last|full)\s*name\b/.test(context) &&
+      !/\b(company|employer|school|university|referrer|reference|username)\b/.test(context);
   }
 
   function isFilled(element) {
@@ -473,28 +469,51 @@
   }
 
   function fillElement(element, value, mode) {
-    if (!isSupportedField(element) || isFilled(element)) {
+    const target = resolveFillTarget(element, mode);
+
+    if (!target || !isSupportedField(target) || isFilled(target)) {
       return false;
     }
 
-    if (element.type === "radio" || mode === "radio") {
-      return fillRadio(element, value);
+    if (target.type === "radio" || mode === "radio") {
+      return fillRadio(target, value);
     }
 
-    if (element.tagName.toLowerCase() === "select" || mode === "select") {
-      return fillSelect(element, value);
+    if (target.tagName.toLowerCase() === "select" || mode === "select") {
+      return fillSelect(target, value);
     }
 
-    if (element.isContentEditable) {
-      element.focus();
-      element.textContent = value;
-      dispatchInputEvents(element);
+    if (target.isContentEditable || target.matches("[role='textbox']")) {
+      fillEditableTarget(target, value);
+      dispatchInputEvents(target);
       return true;
     }
 
-    setNativeValue(element, value);
-    dispatchInputEvents(element);
+    target.focus();
+    setNativeValue(target, value);
+    dispatchInputEvents(target);
     return true;
+  }
+
+  function resolveFillTarget(element, mode) {
+    if (!element) {
+      return null;
+    }
+
+    if (mode === "radio" || mode === "select") {
+      return element;
+    }
+
+    if (element.tagName?.toLowerCase() === "input" || element.tagName?.toLowerCase() === "textarea") {
+      return element;
+    }
+
+    const nestedInput = element.querySelector?.("input, textarea, select");
+    if (nestedInput) {
+      return nestedInput;
+    }
+
+    return element;
   }
 
   function fillSelect(element, value) {
@@ -551,9 +570,7 @@
   }
 
   function setNativeValue(element, value) {
-    const tagName = element.tagName.toLowerCase();
-    const prototype = tagName === "textarea" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-    const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+    const descriptor = getValuePropertyDescriptor(element);
 
     if (descriptor?.set) {
       descriptor.set.call(element, value);
@@ -562,8 +579,39 @@
     }
   }
 
+  function getValuePropertyDescriptor(element) {
+    let prototype = element;
+
+    while (prototype) {
+      const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+      if (descriptor?.set) {
+        return descriptor;
+      }
+      prototype = Object.getPrototypeOf(prototype);
+    }
+
+    return null;
+  }
+
+  function fillEditableTarget(element, value) {
+    element.focus();
+
+    if ("value" in element) {
+      setNativeValue(element, value);
+      return;
+    }
+
+    if (element.isContentEditable) {
+      element.textContent = value;
+      return;
+    }
+
+    element.textContent = value;
+    element.setAttribute("aria-label", element.getAttribute("aria-label") || "");
+  }
+
   function dispatchInputEvents(element) {
-    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new InputEvent("input", { bubbles: true, data: null, inputType: "insertText" }));
     element.dispatchEvent(new Event("change", { bubbles: true }));
     element.dispatchEvent(new Event("blur", { bubbles: true }));
   }
