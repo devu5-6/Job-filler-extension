@@ -177,7 +177,8 @@
       .map((element) => ({
         element,
         type: getFieldType(element),
-        context: buildContext(element)
+        context: buildContext(element),
+        questionText: normalizeText(getGoogleFormsQuestionText(element))
       }))
       .filter((descriptor) => descriptor.context);
   }
@@ -351,7 +352,7 @@
       return { fieldKey: "fullName" };
     }
 
-    if (isGenericNameField(context) && shouldUseGenericNameField(allFields, profile)) {
+    if (isGenericNameField(context) && shouldUseGenericNameField(descriptor, allFields, profile)) {
       return { fieldKey: "fullName" };
     }
 
@@ -397,9 +398,13 @@
       !matchesPatterns(context, FIELD_PATTERNS.lastName);
   }
 
-  function shouldUseGenericNameField(allFields, profile) {
+  function shouldUseGenericNameField(descriptor, allFields, profile) {
     if (!profile.fullName) {
       return false;
+    }
+
+    if (isGoogleFormsStandaloneNameField(descriptor, allFields)) {
+      return true;
     }
 
     const hasSplitNameFields =
@@ -407,6 +412,27 @@
       allFields.some((field) => matchesPatterns(field.context, FIELD_PATTERNS.lastName));
 
     return !hasSplitNameFields;
+  }
+
+  function isGoogleFormsStandaloneNameField(descriptor, allFields) {
+    if (!isGoogleFormsPage) {
+      return false;
+    }
+
+    const questionText = descriptor.questionText || "";
+    if (!questionText || !/^name\b/.test(questionText)) {
+      return false;
+    }
+
+    const hasSplitNameFields =
+      allFields.some((field) => matchesPatterns(field.context, FIELD_PATTERNS.firstName)) &&
+      allFields.some((field) => matchesPatterns(field.context, FIELD_PATTERNS.lastName));
+
+    if (!hasSplitNameFields) {
+      return true;
+    }
+
+    return matchesPatterns(descriptor.context, FIELD_PATTERNS.fullName);
   }
 
   function isFilled(element) {
