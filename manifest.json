@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "JobForm AutoFiller",
+  "version": "1.0.0",
+  "description": "Automatically fills common job application forms with your saved profile details.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "action": {
+    "default_title": "JobForm AutoFiller",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

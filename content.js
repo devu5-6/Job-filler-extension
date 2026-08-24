@@ -1,0 +1,552 @@
+(function initJobFormAutofiller() {
+  const STORAGE_KEY = "profile";
+  const AUTOFILL_MESSAGE = "AUTOFILL_PAGE";
+  const RETRY_DELAYS_MS = [0, 500, 1500, 3000, 5000, 8000];
+  const GOOGLE_FORMS_HOST = "docs.google.com";
+  const GOOGLE_FORMS_PATH_PREFIX = "/forms";
+  const GOOGLE_FORMS_OBSERVER_WINDOW_MS = 12000;
+
+  const FIELD_PATTERNS = {
+    firstName: [/\bfirst\s*name\b/, /\bgiven\s*name\b/, /\bfname\b/, /\bforename\b/],
+    lastName: [/\blast\s*name\b/, /\bsurname\b/, /\bfamily\s*name\b/, /\blname\b/],
+    fullName: [/\bfull\s*name\b/, /\blegal\s*name\b/, /\byour\s*name\b/, /\bapplicant\s*name\b/],
+    email: [/\be-?mail\b/, /\bemail\s*address\b/],
+    phone: [/\bphone\b/, /\bmobile\b/, /\bcell\b/, /\btelephone\b/, /\bcontact\s*number\b/],
+    location: [/\bcity\b/, /\blocation\b/, /\bcurrent\s*location\b/, /\bwhere\s*are\s*you\s*based\b/],
+    linkedinUrl: [/\blinked[\s-]?in\b/, /\blinkedin\s*profile\b/],
+    githubUrl: [/\bgithub\b/, /\bgithub\s*profile\b/],
+    portfolioUrl: [/\bportfolio\b/, /\bwebsite\b/, /\bpersonal\s*site\b/, /\bhomepage\b/],
+    workAuthorization: [
+      /\bwork\s*authorization\b/,
+      /\bauthorized\s*to\s*work\b/,
+      /\brequire\s*sponsorship\b/,
+      /\bneed\s*sponsorship\b/,
+      /\bsponsorship\b/,
+      /\bvisa\s*sponsorship\b/
+    ]
+  };
+
+  const YES_PATTERNS = [/\byes\b/, /\bauthorized\b/, /\bno sponsorship\b/, /\bnot require sponsorship\b/];
+  const NO_PATTERNS = [/\bno\b/, /\brequire sponsorship\b/, /\bneed sponsorship\b/];
+  const FIELD_SELECTOR = "input, textarea, select, [role='textbox'], [contenteditable='true']";
+  const GOOGLE_FORMS_CONTAINER_SELECTORS = [
+    "[role='listitem']",
+    ".Qr7Oae",
+    ".geS5n",
+    ".o3Dpx",
+    ".m2",
+    ".KHxj8b"
+  ].join(", ");
+  const GOOGLE_FORMS_TITLE_SELECTORS = [
+    "[role='heading']",
+    "[data-item-title]",
+    ".M7eMe",
+    ".HoXoMd",
+    ".zMKNVc",
+    ".F9yp7e"
+  ];
+
+  const isGoogleFormsPage =
+    window.location.hostname === GOOGLE_FORMS_HOST &&
+    window.location.pathname.startsWith(GOOGLE_FORMS_PATH_PREFIX);
+
+  let autoFillStarted = false;
+  let observerDisconnectHandle = null;
+  let lastFieldSignature = "";
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type !== AUTOFILL_MESSAGE) {
+      return false;
+    }
+
+    runAutofill({ manual: true })
+      .then((result) => sendResponse(result))
+      .catch((error) => sendResponse({ ok: false, filledCount: 0, skippedCount: 0, message: error.message }));
+
+    return true;
+  });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => {
+      scheduleAutofill();
+    }, { once: true });
+  } else {
+    scheduleAutofill();
+  }
+
+  function scheduleAutofill() {
+    if (autoFillStarted) {
+      return;
+    }
+
+    autoFillStarted = true;
+
+    for (const delay of RETRY_DELAYS_MS) {
+      window.setTimeout(() => {
+        runAutofill({ manual: false }).catch(() => {});
+      }, delay);
+    }
+
+    if (isGoogleFormsPage) {
+      observeGoogleFormsMounting();
+    }
+  }
+
+  function observeGoogleFormsMounting() {
+    const observer = new MutationObserver(() => {
+      window.clearTimeout(observerDisconnectHandle);
+      observerDisconnectHandle = window.setTimeout(() => observer.disconnect(), 1000);
+      runAutofill({ manual: false }).catch(() => {});
+    });
+
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+
+    window.setTimeout(() => observer.disconnect(), GOOGLE_FORMS_OBSERVER_WINDOW_MS);
+  }
+
+  async function runAutofill({ manual }) {
+    const result = await chrome.storage.local.get(STORAGE_KEY);
+    const profile = normalizeProfile(result?.[STORAGE_KEY]);
+
+    if (!hasProfileData(profile)) {
+      return {
+        ok: false,
+        filledCount: 0,
+        skippedCount: 0,
+        message: "No saved profile details found."
+      };
+    }
+
+    const fields = collectFields();
+    if (!fields.length) {
+      return {
+        ok: false,
+        filledCount: 0,
+        skippedCount: 0,
+        message: "No supported form fields detected on this page."
+      };
+    }
+
+    const signature = createFieldSignature(fields);
+    if (!manual && signature === lastFieldSignature) {
+      return {
+        ok: true,
+        filledCount: 0,
+        skippedCount: 0,
+        message: "No new matching fields detected."
+      };
+    }
+    lastFieldSignature = signature;
+
+    const fillPlan = buildFillPlan(fields, profile);
+    const stats = applyFillPlan(fillPlan, profile);
+
+    return {
+      ok: true,
+      filledCount: stats.filledCount,
+      skippedCount: stats.skippedCount,
+      message: stats.filledCount ? "Autofill complete." : "No matching empty fields found."
+    };
+  }
+
+  function normalizeProfile(profile = {}) {
+    return {
+      fullName: (profile.fullName || "").trim(),
+      firstName: (profile.firstName || "").trim(),
+      lastName: (profile.lastName || "").trim(),
+      email: (profile.email || "").trim(),
+      phone: (profile.phone || "").trim(),
+      location: (profile.location || "").trim(),
+      linkedinUrl: (profile.linkedinUrl || "").trim(),
+      githubUrl: (profile.githubUrl || "").trim(),
+      portfolioUrl: (profile.portfolioUrl || "").trim(),
+      workAuthorization: (profile.workAuthorization || "").trim().toLowerCase()
+    };
+  }
+
+  function hasProfileData(profile) {
+    return Object.values(profile).some(Boolean);
+  }
+
+  function collectFields() {
+    return Array.from(document.querySelectorAll(FIELD_SELECTOR))
+      .filter(isSupportedField)
+      .map((element) => ({
+        element,
+        type: getFieldType(element),
+        context: buildContext(element)
+      }))
+      .filter((descriptor) => descriptor.context);
+  }
+
+  function isSupportedField(element) {
+    if (!element || element.disabled || element.readOnly) {
+      return false;
+    }
+
+    if (element.matches("[contenteditable='false']")) {
+      return false;
+    }
+
+    const tagName = element.tagName.toLowerCase();
+    if (tagName === "input") {
+      const type = (element.getAttribute("type") || "text").toLowerCase();
+      const unsupportedTypes = new Set(["hidden", "submit", "button", "file", "image", "reset", "password"]);
+      if (unsupportedTypes.has(type)) {
+        return false;
+      }
+    }
+
+    return isElementVisible(element);
+  }
+
+  function isElementVisible(element) {
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+
+    if (style.display === "none" || style.visibility === "hidden") {
+      return false;
+    }
+
+    if (rect.width === 0 && rect.height === 0) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function getFieldType(element) {
+    if (element.matches("[role='textbox']")) {
+      return element.getAttribute("aria-multiline") === "true" ? "textarea" : "text";
+    }
+
+    if (element.isContentEditable) {
+      return "contenteditable";
+    }
+
+    if (element.tagName.toLowerCase() === "input") {
+      return (element.type || "text").toLowerCase();
+    }
+
+    return element.tagName.toLowerCase();
+  }
+
+  function buildContext(element) {
+    const parts = [
+      getLabelText(element),
+      element.placeholder || "",
+      element.name || "",
+      element.id || "",
+      element.getAttribute("aria-label") || "",
+      getAriaLabelledByText(element),
+      getGoogleFormsQuestionText(element)
+    ];
+
+    return normalizeText(parts.filter(Boolean).join(" "));
+  }
+
+  function getLabelText(element) {
+    const labels = [];
+
+    if (element.id) {
+      const explicitLabel = document.querySelector(`label[for="${cssEscape(element.id)}"]`);
+      if (explicitLabel) {
+        labels.push(explicitLabel.innerText || explicitLabel.textContent || "");
+      }
+    }
+
+    const wrappingLabel = element.closest("label");
+    if (wrappingLabel) {
+      labels.push(wrappingLabel.innerText || wrappingLabel.textContent || "");
+    }
+
+    return labels.join(" ");
+  }
+
+  function getAriaLabelledByText(element) {
+    const labelledBy = element.getAttribute("aria-labelledby");
+    if (!labelledBy) {
+      return "";
+    }
+
+    return labelledBy
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((id) => document.getElementById(id))
+      .filter(Boolean)
+      .map((node) => node.innerText || node.textContent || "")
+      .join(" ");
+  }
+
+  function getGoogleFormsQuestionText(element) {
+    if (!isGoogleFormsPage) {
+      return "";
+    }
+
+    const container = element.closest(GOOGLE_FORMS_CONTAINER_SELECTORS);
+    if (!container) {
+      return "";
+    }
+
+    for (const selector of GOOGLE_FORMS_TITLE_SELECTORS) {
+      const titleNode = container.querySelector(selector);
+      if (titleNode?.innerText) {
+        return titleNode.innerText;
+      }
+    }
+
+    const fallbackText = (container.innerText || container.textContent || "").trim();
+    return fallbackText.slice(0, 400);
+  }
+
+  function normalizeText(text) {
+    return text.toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
+  function createFieldSignature(fields) {
+    return fields
+      .map((field) => `${field.type}:${field.context}:${field.element.name || ""}:${field.element.id || ""}`)
+      .join("|");
+  }
+
+  function buildFillPlan(fields, profile) {
+    const plan = new Map();
+
+    for (const descriptor of fields) {
+      const match = matchField(descriptor, fields, profile);
+      if (match) {
+        plan.set(descriptor.element, match);
+      }
+    }
+
+    return plan;
+  }
+
+  function matchField(descriptor, allFields, profile) {
+    const { element, context, type } = descriptor;
+
+    if (!context || isFilled(element)) {
+      return null;
+    }
+
+    if (type === "radio") {
+      if (matchesPatterns(context, FIELD_PATTERNS.workAuthorization) && profile.workAuthorization) {
+        return { fieldKey: "workAuthorization", mode: "radio" };
+      }
+      return null;
+    }
+
+    if (matchesPatterns(context, FIELD_PATTERNS.firstName) && profile.firstName) {
+      return { fieldKey: "firstName" };
+    }
+
+    if (matchesPatterns(context, FIELD_PATTERNS.lastName) && profile.lastName) {
+      return { fieldKey: "lastName" };
+    }
+
+    if (matchesPatterns(context, FIELD_PATTERNS.fullName) && profile.fullName) {
+      return { fieldKey: "fullName" };
+    }
+
+    if (isGenericNameField(context) && shouldUseGenericNameField(allFields, profile)) {
+      return { fieldKey: "fullName" };
+    }
+
+    if (matchesPatterns(context, FIELD_PATTERNS.email) && profile.email) {
+      return { fieldKey: "email" };
+    }
+
+    if (matchesPatterns(context, FIELD_PATTERNS.phone) && profile.phone) {
+      return { fieldKey: "phone" };
+    }
+
+    if (matchesPatterns(context, FIELD_PATTERNS.location) && profile.location) {
+      return { fieldKey: "location" };
+    }
+
+    if (matchesPatterns(context, FIELD_PATTERNS.linkedinUrl) && profile.linkedinUrl) {
+      return { fieldKey: "linkedinUrl" };
+    }
+
+    if (matchesPatterns(context, FIELD_PATTERNS.githubUrl) && profile.githubUrl) {
+      return { fieldKey: "githubUrl" };
+    }
+
+    if (matchesPatterns(context, FIELD_PATTERNS.portfolioUrl) && profile.portfolioUrl) {
+      return { fieldKey: "portfolioUrl" };
+    }
+
+    if (matchesPatterns(context, FIELD_PATTERNS.workAuthorization) && profile.workAuthorization) {
+      return { fieldKey: "workAuthorization", mode: element.tagName.toLowerCase() === "select" ? "select" : "text" };
+    }
+
+    return null;
+  }
+
+  function matchesPatterns(context, patterns) {
+    return patterns.some((pattern) => pattern.test(context));
+  }
+
+  function isGenericNameField(context) {
+    return /\bname\b/.test(context) &&
+      !/\b(company|employer|school|university|referrer|reference|username)\b/.test(context) &&
+      !matchesPatterns(context, FIELD_PATTERNS.firstName) &&
+      !matchesPatterns(context, FIELD_PATTERNS.lastName);
+  }
+
+  function shouldUseGenericNameField(allFields, profile) {
+    if (!profile.fullName) {
+      return false;
+    }
+
+    const hasSplitNameFields =
+      allFields.some((field) => matchesPatterns(field.context, FIELD_PATTERNS.firstName)) &&
+      allFields.some((field) => matchesPatterns(field.context, FIELD_PATTERNS.lastName));
+
+    return !hasSplitNameFields;
+  }
+
+  function isFilled(element) {
+    if (element.tagName.toLowerCase() === "select") {
+      return Boolean(element.value && element.value.trim());
+    }
+
+    if (element.type === "radio" || element.type === "checkbox") {
+      return element.checked;
+    }
+
+    if (element.isContentEditable) {
+      return Boolean((element.textContent || "").trim());
+    }
+
+    return Boolean((element.value || "").trim());
+  }
+
+  function applyFillPlan(plan, profile) {
+    let filledCount = 0;
+    let skippedCount = 0;
+
+    for (const [element, match] of plan.entries()) {
+      const value = profile[match.fieldKey];
+      if (!value) {
+        skippedCount += 1;
+        continue;
+      }
+
+      if (fillElement(element, value, match.mode)) {
+        filledCount += 1;
+      } else {
+        skippedCount += 1;
+      }
+    }
+
+    return { filledCount, skippedCount };
+  }
+
+  function fillElement(element, value, mode) {
+    if (!isSupportedField(element) || isFilled(element)) {
+      return false;
+    }
+
+    if (element.type === "radio" || mode === "radio") {
+      return fillRadio(element, value);
+    }
+
+    if (element.tagName.toLowerCase() === "select" || mode === "select") {
+      return fillSelect(element, value);
+    }
+
+    if (element.isContentEditable) {
+      element.focus();
+      element.textContent = value;
+      dispatchInputEvents(element);
+      return true;
+    }
+
+    setNativeValue(element, value);
+    dispatchInputEvents(element);
+    return true;
+  }
+
+  function fillSelect(element, value) {
+    const normalizedChoice = String(value).toLowerCase();
+    const options = Array.from(element.options);
+
+    const matchingOption = options.find((option) => {
+      const haystack = normalizeText(`${option.label} ${option.text} ${option.value}`);
+      if (normalizedChoice === "yes") {
+        return YES_PATTERNS.some((pattern) => pattern.test(haystack));
+      }
+      if (normalizedChoice === "no") {
+        return NO_PATTERNS.some((pattern) => pattern.test(haystack));
+      }
+      return haystack.includes(normalizedChoice);
+    });
+
+    if (!matchingOption) {
+      return false;
+    }
+
+    element.value = matchingOption.value;
+    dispatchInputEvents(element);
+    return true;
+  }
+
+  function fillRadio(element, value) {
+    if (!element.name) {
+      return false;
+    }
+
+    const radioGroup = Array.from(document.querySelectorAll(`input[type="radio"][name="${cssEscape(element.name)}"]`));
+    const normalizedChoice = String(value).toLowerCase();
+
+    const target = radioGroup.find((radio) => {
+      const context = buildContext(radio);
+      const valueText = normalizeText(`${radio.value} ${context}`);
+      if (normalizedChoice === "yes") {
+        return YES_PATTERNS.some((pattern) => pattern.test(valueText));
+      }
+      if (normalizedChoice === "no") {
+        return NO_PATTERNS.some((pattern) => pattern.test(valueText));
+      }
+      return valueText.includes(normalizedChoice);
+    });
+
+    if (!target) {
+      return false;
+    }
+
+    target.checked = true;
+    dispatchInputEvents(target);
+    return true;
+  }
+
+  function setNativeValue(element, value) {
+    const tagName = element.tagName.toLowerCase();
+    const prototype = tagName === "textarea" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+
+    if (descriptor?.set) {
+      descriptor.set.call(element, value);
+    } else {
+      element.value = value;
+    }
+  }
+
+  function dispatchInputEvents(element) {
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+    element.dispatchEvent(new Event("blur", { bubbles: true }));
+  }
+
+  function cssEscape(value) {
+    if (window.CSS?.escape) {
+      return window.CSS.escape(value);
+    }
+
+    return String(value).replace(/["\\]/g, "\\$&");
+  }
+})();

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JobForm AutoFiller</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="hero">
+        <p class="eyebrow">Chrome Extension</p>
+        <h1>JobForm AutoFiller</h1>
+        <p class="subtitle">Save your core application details once, then autofill supported forms on load.</p>
+      </header>
+
+      <form id="profile-form" novalidate>
+        <div class="field-grid">
+          <label class="field">
+            <span>Full Name</span>
+            <input type="text" id="fullName" name="fullName" autocomplete="name" />
+          </label>
+
+          <div class="split-grid">
+            <label class="field">
+              <span>First Name</span>
+              <input type="text" id="firstName" name="firstName" autocomplete="given-name" />
+            </label>
+
+            <label class="field">
+              <span>Last Name</span>
+              <input type="text" id="lastName" name="lastName" autocomplete="family-name" />
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Email Address</span>
+            <input type="email" id="email" name="email" autocomplete="email" />
+          </label>
+
+          <label class="field">
+            <span>Phone Number</span>
+            <input type="tel" id="phone" name="phone" autocomplete="tel" />
+          </label>
+
+          <label class="field">
+            <span>Current City / Location</span>
+            <input type="text" id="location" name="location" autocomplete="address-level2" />
+          </label>
+
+          <label class="field">
+            <span>LinkedIn Profile URL</span>
+            <input type="url" id="linkedinUrl" name="linkedinUrl" placeholder="https://linkedin.com/in/your-name" />
+          </label>
+
+          <label class="field">
+            <span>GitHub Profile URL</span>
+            <input type="url" id="githubUrl" name="githubUrl" placeholder="https://github.com/your-name" />
+          </label>
+
+          <label class="field">
+            <span>Portfolio / Website URL</span>
+            <input type="url" id="portfolioUrl" name="portfolioUrl" placeholder="https://your-site.com" />
+          </label>
+
+          <label class="field">
+            <span>Work Authorization / Sponsorship</span>
+            <select id="workAuthorization" name="workAuthorization">
+              <option value="">Select status</option>
+              <option value="yes">Yes - authorized to work / no sponsorship needed</option>
+              <option value="no">No - sponsorship required</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="primary">Save Details</button>
+          <button type="button" id="autofill-page" class="secondary">Autofill Page</button>
+        </div>
+
+        <p id="status" class="status" aria-live="polite"></p>
+      </form>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
