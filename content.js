@@ -28,7 +28,14 @@
 
   const YES_PATTERNS = [/\byes\b/, /\bauthorized\b/, /\bno sponsorship\b/, /\bnot require sponsorship\b/];
   const NO_PATTERNS = [/\bno\b/, /\brequire sponsorship\b/, /\bneed sponsorship\b/];
-  const FIELD_SELECTOR = "input, textarea, select, [role='textbox'], [contenteditable='true']";
+  const FIELD_SELECTOR = [
+    "input",
+    "textarea",
+    "select",
+    "[role='textbox']",
+    "[contenteditable='true']",
+    "[contenteditable='plaintext-only']"
+  ].join(", ");
   const GOOGLE_FORMS_CONTAINER_SELECTORS = [
     "[role='listitem']",
     ".Qr7Oae",
@@ -172,7 +179,9 @@
   }
 
   function collectFields() {
-    return Array.from(document.querySelectorAll(FIELD_SELECTOR))
+    return getQueryableRoots()
+      .flatMap((root) => Array.from(root.querySelectorAll(FIELD_SELECTOR)))
+      .filter((element, index, elements) => elements.indexOf(element) === index)
       .filter(isSupportedField)
       .map((element) => ({
         element,
@@ -243,6 +252,8 @@
       element.id || "",
       element.getAttribute("aria-label") || "",
       getAriaLabelledByText(element),
+      getAriaDescribedByText(element),
+      getNearbyContextText(element),
       getGoogleFormsQuestionText(element)
     ];
 
@@ -282,6 +293,31 @@
       .join(" ");
   }
 
+  function getAriaDescribedByText(element) {
+    const describedBy = element.getAttribute("aria-describedby");
+    if (!describedBy) {
+      return "";
+    }
+
+    return describedBy
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((id) => document.getElementById(id))
+      .filter(Boolean)
+      .map((node) => node.innerText || node.textContent || "")
+      .join(" ");
+  }
+
+  function getNearbyContextText(element) {
+    const container = element.closest("div, fieldset, section, article, li, td, th, form");
+    if (!container) {
+      return "";
+    }
+
+    const text = container.innerText || container.textContent || "";
+    return text.trim().slice(0, 400);
+  }
+
   function getGoogleFormsQuestionText(element) {
     if (!isGoogleFormsPage) {
       return "";
@@ -305,6 +341,50 @@
 
   function normalizeText(text) {
     return text.toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
+  function getQueryableRoots() {
+    const roots = [];
+    const visited = new Set();
+
+    addRoot(document);
+
+    return roots;
+
+    function addRoot(root) {
+      if (!root || visited.has(root)) {
+        return;
+      }
+
+      visited.add(root);
+      roots.push(root);
+
+      const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+      let currentNode = treeWalker.currentNode;
+
+      while (currentNode) {
+        if (currentNode.shadowRoot) {
+          addRoot(currentNode.shadowRoot);
+        }
+
+        if (currentNode.tagName === "IFRAME") {
+          const frameRoot = getSameOriginFrameRoot(currentNode);
+          if (frameRoot) {
+            addRoot(frameRoot);
+          }
+        }
+
+        currentNode = treeWalker.nextNode();
+      }
+    }
+  }
+
+  function getSameOriginFrameRoot(frame) {
+    try {
+      return frame.contentDocument || frame.contentWindow?.document || null;
+    } catch {
+      return null;
+    }
   }
 
   function createFieldSignature(fields) {
