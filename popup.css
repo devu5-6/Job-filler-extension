@@ -84,12 +84,14 @@ body {
 }
 
 input,
+textarea,
 select,
 button {
   font: inherit;
 }
 
 input,
+textarea,
 select {
   width: 100%;
   padding: 11px 12px;
@@ -102,9 +104,15 @@ select {
 }
 
 input:focus,
+textarea:focus,
 select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+textarea {
+  min-height: 96px;
+  resize: vertical;
 }
 
 .actions {

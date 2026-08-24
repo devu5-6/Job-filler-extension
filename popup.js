@@ -10,6 +10,7 @@ const FIELD_NAMES = [
   "linkedinUrl",
   "githubUrl",
   "portfolioUrl",
+  "skills",
   "workAuthorization"
 ];
 

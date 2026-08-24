@@ -16,6 +16,7 @@
     linkedinUrl: [/\blinked[\s-]?in\b/, /\blinkedin\s*profile\b/],
     githubUrl: [/\bgithub\b/, /\bgithub\s*profile\b/],
     portfolioUrl: [/\bportfolio\b/, /\bwebsite\b/, /\bpersonal\s*site\b/, /\bhomepage\b/],
+    skills: [/\bskills?\b/, /\btechnical\s*skills?\b/, /\bcore\s*competencies\b/, /\bexpertise\b/],
     workAuthorization: [
       /\bwork\s*authorization\b/,
       /\bauthorized\s*to\s*work\b/,
@@ -170,6 +171,7 @@
       linkedinUrl: (profile.linkedinUrl || "").trim(),
       githubUrl: (profile.githubUrl || "").trim(),
       portfolioUrl: (profile.portfolioUrl || "").trim(),
+      skills: (profile.skills || "").trim(),
       workAuthorization: (profile.workAuthorization || "").trim().toLowerCase()
     };
   }
@@ -458,6 +460,10 @@
 
     if (matchesPatterns(context, FIELD_PATTERNS.portfolioUrl) && profile.portfolioUrl) {
       return { fieldKey: "portfolioUrl" };
+    }
+
+    if (matchesPatterns(context, FIELD_PATTERNS.skills) && profile.skills) {
+      return { fieldKey: "skills" };
     }
 
     if (matchesPatterns(context, FIELD_PATTERNS.workAuthorization) && profile.workAuthorization) {
