@@ -13,6 +13,19 @@
     email: [/\be-?mail\b/, /\bemail\s*address\b/],
     phone: [/\bphone\b/, /\bmobile\b/, /\bcell\b/, /\btelephone\b/, /\bcontact\s*number\b/],
     location: [/\bcity\b/, /\blocation\b/, /\bcurrent\s*location\b/, /\bwhere\s*are\s*you\s*based\b/],
+    lastCtc: [
+      /\b(?:last|current)\s*(?:ctc|compensation)\b/,
+      /\b(?:ctc|compensation)\s*(?:last|current)\b/,
+      /\bcurrent\s*salary\b/,
+      /\blast\s*salary\b/
+    ],
+    expectedCtc: [
+      /\bexpected\s*(?:ctc|compensation)\b/,
+      /\b(?:ctc|compensation)\s*expected\b/,
+      /\bexpected\s*salary\b/,
+      /\bsalary\s*expectation\b/,
+      /\bcompensation\s*expectation\b/
+    ],
     linkedinUrl: [/\blinked[\s-]?in\b/, /\blinkedin\s*profile\b/],
     githubUrl: [/\bgithub\b/, /\bgithub\s*profile\b/],
     portfolioUrl: [/\bportfolio\b/, /\bwebsite\b/, /\bpersonal\s*site\b/, /\bhomepage\b/],
@@ -168,6 +181,8 @@
       email: (profile.email || "").trim(),
       phone: (profile.phone || "").trim(),
       location: (profile.location || "").trim(),
+      lastCtc: (profile.lastCtc || "").trim(),
+      expectedCtc: (profile.expectedCtc || "").trim(),
       linkedinUrl: (profile.linkedinUrl || "").trim(),
       githubUrl: (profile.githubUrl || "").trim(),
       portfolioUrl: (profile.portfolioUrl || "").trim(),
@@ -450,6 +465,11 @@
       return { fieldKey: "location" };
     }
 
+    const compensationMatch = matchCompensationField(context, profile);
+    if (compensationMatch) {
+      return compensationMatch;
+    }
+
     if (matchesPatterns(context, FIELD_PATTERNS.linkedinUrl) && profile.linkedinUrl) {
       return { fieldKey: "linkedinUrl" };
     }
@@ -475,6 +495,40 @@
 
   function matchesPatterns(context, patterns) {
     return patterns.some((pattern) => pattern.test(context));
+  }
+
+  function matchCompensationField(context, profile) {
+    const lastIndex = getFirstPatternIndex(context, FIELD_PATTERNS.lastCtc);
+    const expectedIndex = getFirstPatternIndex(context, FIELD_PATTERNS.expectedCtc);
+
+    if (lastIndex === -1 && expectedIndex === -1) {
+      return null;
+    }
+
+    if (expectedIndex !== -1 && (lastIndex === -1 || expectedIndex < lastIndex) && profile.expectedCtc) {
+      return { fieldKey: "expectedCtc" };
+    }
+
+    if (lastIndex !== -1 && profile.lastCtc) {
+      return { fieldKey: "lastCtc" };
+    }
+
+    if (expectedIndex !== -1 && profile.expectedCtc) {
+      return { fieldKey: "expectedCtc" };
+    }
+
+    return null;
+  }
+
+  function getFirstPatternIndex(context, patterns) {
+    return patterns.reduce((bestIndex, pattern) => {
+      const match = context.match(pattern);
+      if (!match || match.index === undefined) {
+        return bestIndex;
+      }
+
+      return bestIndex === -1 ? match.index : Math.min(bestIndex, match.index);
+    }, -1);
   }
 
   function isGenericNameField(context) {

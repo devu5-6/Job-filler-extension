@@ -7,6 +7,8 @@ const FIELD_NAMES = [
   "email",
   "phone",
   "location",
+  "lastCtc",
+  "expectedCtc",
   "linkedinUrl",
   "githubUrl",
   "portfolioUrl",
