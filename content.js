@@ -26,6 +26,23 @@
       /\bsalary\s*expectation\b/,
       /\bcompensation\s*expectation\b/
     ],
+    noticePeriod: [
+      /\bnotice\s*period\b/,
+      /\bcurrent\s*notice\s*period\b/,
+      /\bjoining\s*(?:period|time)\b/,
+      /\bavailability\s*(?:to\s*join|period|date)?\b/,
+      /\bavailable\s*to\s*join\b/,
+      /\bwhen\s*can\s*you\s*join\b/,
+      /\bearliest\s*(?:start|joining)\s*date\b/
+    ],
+    totalExperience: [
+      /\btotal\s*experience\b/,
+      /\byears?\s*of\s*experience\b/,
+      /\bexperience\s*(?:in\s*years?|years?)\b/,
+      /\bwork\s*experience\b/,
+      /\bprofessional\s*experience\b/,
+      /\boverall\s*experience\b/
+    ],
     linkedinUrl: [/\blinked[\s-]?in\b/, /\blinkedin\s*profile\b/],
     githubUrl: [/\bgithub\b/, /\bgithub\s*profile\b/],
     portfolioUrl: [/\bportfolio\b/, /\bwebsite\b/, /\bpersonal\s*site\b/, /\bhomepage\b/],
@@ -183,6 +200,8 @@
       location: (profile.location || "").trim(),
       lastCtc: (profile.lastCtc || "").trim(),
       expectedCtc: (profile.expectedCtc || "").trim(),
+      noticePeriod: (profile.noticePeriod || "").trim(),
+      totalExperience: (profile.totalExperience || "").trim(),
       linkedinUrl: (profile.linkedinUrl || "").trim(),
       githubUrl: (profile.githubUrl || "").trim(),
       portfolioUrl: (profile.portfolioUrl || "").trim(),
@@ -468,6 +487,14 @@
     const compensationMatch = matchCompensationField(context, profile);
     if (compensationMatch) {
       return compensationMatch;
+    }
+
+    if (matchesPatterns(context, FIELD_PATTERNS.noticePeriod) && profile.noticePeriod) {
+      return { fieldKey: "noticePeriod" };
+    }
+
+    if (matchesPatterns(context, FIELD_PATTERNS.totalExperience) && profile.totalExperience) {
+      return { fieldKey: "totalExperience" };
     }
 
     if (matchesPatterns(context, FIELD_PATTERNS.linkedinUrl) && profile.linkedinUrl) {

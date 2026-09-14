@@ -9,6 +9,8 @@ const FIELD_NAMES = [
   "location",
   "lastCtc",
   "expectedCtc",
+  "noticePeriod",
+  "totalExperience",
   "linkedinUrl",
   "githubUrl",
   "portfolioUrl",
