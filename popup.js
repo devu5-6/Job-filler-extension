@@ -54,7 +54,7 @@ autofillButton.addEventListener("click", async () => {
       return;
     }
 
-    const response = await chrome.tabs.sendMessage(tab.id, { type: "AUTOFILL_PAGE" });
+    const response = await sendAutofillMessage(tab.id);
 
     if (response?.ok) {
       const summary = response.filledCount
@@ -66,9 +66,23 @@ autofillButton.addEventListener("click", async () => {
 
     setStatus(response?.message || "Autofill could not run on this page.", "error");
   } catch (error) {
-    setStatus("Unable to contact the page. Reload the tab and try again.", "error");
+    setStatus(error.message || "Unable to contact the page. Reload the tab and try again.", "error");
   }
 });
+
+async function sendAutofillMessage(tabId) {
+  try {
+    return await chrome.tabs.sendMessage(tabId, { type: "AUTOFILL_PAGE" });
+  } catch {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["content.js"]
+    });
+
+    await delay(100);
+    return chrome.tabs.sendMessage(tabId, { type: "AUTOFILL_PAGE" });
+  }
+}
 
 async function loadProfile() {
   try {
@@ -132,6 +146,10 @@ function isValidUrl(value) {
 
 function normalizeValue(value) {
   return value.trim();
+}
+
+function delay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function setStatus(message, tone) {

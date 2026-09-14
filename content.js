@@ -1,10 +1,17 @@
 (function initJobFormAutofiller() {
+  if (window.__jobFormAutofillerInitialized) {
+    return;
+  }
+  window.__jobFormAutofillerInitialized = true;
+
   const STORAGE_KEY = "profile";
   const AUTOFILL_MESSAGE = "AUTOFILL_PAGE";
   const RETRY_DELAYS_MS = [0, 500, 1500, 3000, 5000, 8000];
   const GOOGLE_FORMS_HOST = "docs.google.com";
   const GOOGLE_FORMS_PATH_PREFIX = "/forms";
   const GOOGLE_FORMS_OBSERVER_WINDOW_MS = 12000;
+  const LINKEDIN_HOST_PATTERN = /(^|\.)linkedin\.com$/;
+  const LINKEDIN_OBSERVER_WINDOW_MS = 30 * 60 * 1000;
 
   const FIELD_PATTERNS = {
     firstName: [/\bfirst\s*name\b/, /\bgiven\s*name\b/, /\bfname\b/, /\bforename\b/],
@@ -87,6 +94,7 @@
   const isGoogleFormsPage =
     window.location.hostname === GOOGLE_FORMS_HOST &&
     window.location.pathname.startsWith(GOOGLE_FORMS_PATH_PREFIX);
+  const isLinkedInPage = LINKEDIN_HOST_PATTERN.test(window.location.hostname);
 
   let autoFillStarted = false;
   let observerDisconnectHandle = null;
@@ -128,6 +136,10 @@
     if (isGoogleFormsPage) {
       observeGoogleFormsMounting();
     }
+
+    if (isLinkedInPage) {
+      observeDynamicFormMounting(LINKEDIN_OBSERVER_WINDOW_MS);
+    }
   }
 
   function observeGoogleFormsMounting() {
@@ -143,6 +155,23 @@
     });
 
     window.setTimeout(() => observer.disconnect(), GOOGLE_FORMS_OBSERVER_WINDOW_MS);
+  }
+
+  function observeDynamicFormMounting(windowMs) {
+    let debounceHandle = null;
+    const observer = new MutationObserver(() => {
+      window.clearTimeout(debounceHandle);
+      debounceHandle = window.setTimeout(() => {
+        runAutofill({ manual: false }).catch(() => {});
+      }, 300);
+    });
+
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+
+    window.setTimeout(() => observer.disconnect(), windowMs);
   }
 
   async function runAutofill({ manual }) {
