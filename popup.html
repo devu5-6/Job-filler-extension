@@ -15,6 +15,13 @@
       </header>
 
       <form id="profile-form" novalidate>
+        <div class="actions">
+          <button type="submit" class="primary">Save Details</button>
+          <button type="button" id="autofill-page" class="secondary">Autofill Page</button>
+        </div>
+
+        <p id="status" class="status" aria-live="polite"></p>
+
         <div class="field-grid">
           <label class="field">
             <span>Full Name</span>
@@ -104,13 +111,6 @@
             </select>
           </label>
         </div>
-
-        <div class="actions">
-          <button type="submit" class="primary">Save Details</button>
-          <button type="button" id="autofill-page" class="secondary">Autofill Page</button>
-        </div>
-
-        <p id="status" class="status" aria-live="polite"></p>
       </form>
     </main>
 
