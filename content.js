@@ -53,19 +53,9 @@
     linkedinUrl: [/\blinked[\s-]?in\b/, /\blinkedin\s*profile\b/],
     githubUrl: [/\bgithub\b/, /\bgithub\s*profile\b/],
     portfolioUrl: [/\bportfolio\b/, /\bwebsite\b/, /\bpersonal\s*site\b/, /\bhomepage\b/],
-    skills: [/\bskills?\b/, /\btechnical\s*skills?\b/, /\bcore\s*competencies\b/, /\bexpertise\b/],
-    workAuthorization: [
-      /\bwork\s*authorization\b/,
-      /\bauthorized\s*to\s*work\b/,
-      /\brequire\s*sponsorship\b/,
-      /\bneed\s*sponsorship\b/,
-      /\bsponsorship\b/,
-      /\bvisa\s*sponsorship\b/
-    ]
+    skills: [/\bskills?\b/, /\btechnical\s*skills?\b/, /\bcore\s*competencies\b/, /\bexpertise\b/]
   };
 
-  const YES_PATTERNS = [/\byes\b/, /\bauthorized\b/, /\bno sponsorship\b/, /\bnot require sponsorship\b/];
-  const NO_PATTERNS = [/\bno\b/, /\brequire sponsorship\b/, /\bneed sponsorship\b/];
   const FIELD_SELECTOR = [
     "input",
     "textarea",
@@ -234,8 +224,7 @@
       linkedinUrl: (profile.linkedinUrl || "").trim(),
       githubUrl: (profile.githubUrl || "").trim(),
       portfolioUrl: (profile.portfolioUrl || "").trim(),
-      skills: (profile.skills || "").trim(),
-      workAuthorization: (profile.workAuthorization || "").trim().toLowerCase()
+      skills: (profile.skills || "").trim()
     };
   }
 
@@ -479,9 +468,6 @@
     }
 
     if (type === "radio") {
-      if (matchesPatterns(context, FIELD_PATTERNS.workAuthorization) && profile.workAuthorization) {
-        return { fieldKey: "workAuthorization", mode: "radio" };
-      }
       return null;
     }
 
@@ -540,10 +526,6 @@
 
     if (matchesPatterns(context, FIELD_PATTERNS.skills) && profile.skills) {
       return { fieldKey: "skills" };
-    }
-
-    if (matchesPatterns(context, FIELD_PATTERNS.workAuthorization) && profile.workAuthorization) {
-      return { fieldKey: "workAuthorization", mode: element.tagName.toLowerCase() === "select" ? "select" : "text" };
     }
 
     return null;
@@ -718,12 +700,6 @@
 
     const matchingOption = options.find((option) => {
       const haystack = normalizeText(`${option.label} ${option.text} ${option.value}`);
-      if (normalizedChoice === "yes") {
-        return YES_PATTERNS.some((pattern) => pattern.test(haystack));
-      }
-      if (normalizedChoice === "no") {
-        return NO_PATTERNS.some((pattern) => pattern.test(haystack));
-      }
       return haystack.includes(normalizedChoice);
     });
 
@@ -747,12 +723,6 @@
     const target = radioGroup.find((radio) => {
       const context = buildContext(radio);
       const valueText = normalizeText(`${radio.value} ${context}`);
-      if (normalizedChoice === "yes") {
-        return YES_PATTERNS.some((pattern) => pattern.test(valueText));
-      }
-      if (normalizedChoice === "no") {
-        return NO_PATTERNS.some((pattern) => pattern.test(valueText));
-      }
       return valueText.includes(normalizedChoice);
     });
 
