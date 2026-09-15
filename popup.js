@@ -14,8 +14,7 @@ const FIELD_NAMES = [
   "linkedinUrl",
   "githubUrl",
   "portfolioUrl",
-  "skills",
-  "workAuthorization"
+  "skills"
 ];
 
 const form = document.getElementById("profile-form");
