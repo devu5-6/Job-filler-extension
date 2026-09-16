@@ -14,6 +14,7 @@ const FIELD_NAMES = [
   "linkedinUrl",
   "githubUrl",
   "portfolioUrl",
+  "coverLetter",
   "skills"
 ];
 
