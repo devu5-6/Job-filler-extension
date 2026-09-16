@@ -18,7 +18,7 @@
     lastName: [/\blast\s*name\b/, /\bsurname\b/, /\bfamily\s*name\b/, /\blname\b/],
     fullName: [/\bfull\s*name\b/, /\blegal\s*name\b/, /\byour\s*name\b/, /\bapplicant\s*name\b/],
     email: [/\be-?mail\b/, /\bemail\s*address\b/],
-    phone: [/\bphone\b/, /\bmobile\b/, /\bcell\b/, /\btelephone\b/, /\bcontact\s*number\b/],
+    phone: [/\bphone\b/, /\bmobile\b/, /\bcell\b/, /\btelephone\b/, /\bcontact\s*(?:no\.?|number)\b/],
     location: [/\bcity\b/, /\blocation\b/, /\bcurrent\s*location\b/, /\bwhere\s*are\s*you\s*based\b/],
     lastCtc: [
       /\b(?:last|current)\s*(?:ctc|compensation)\b/,
@@ -27,6 +27,7 @@
       /\blast\s*salary\b/
     ],
     expectedCtc: [
+      /\bectc\b/,
       /\bexpected\s*(?:ctc|compensation)\b/,
       /\b(?:ctc|compensation)\s*expected\b/,
       /\bexpected\s*salary\b/,
@@ -44,7 +45,9 @@
     ],
     totalExperience: [
       /\btotal\s*experience\b/,
+      /\bhow\s*many\s*years\b/,
       /\byears?\s*of\s*experience\b/,
+      /\byears?\s*of\s*professional\s*experience\b/,
       /\bexperience\s*(?:in\s*years?|years?)\b/,
       /\bwork\s*experience\b/,
       /\bprofessional\s*experience\b/,
@@ -53,6 +56,14 @@
     linkedinUrl: [/\blinked[\s-]?in\b/, /\blinkedin\s*profile\b/],
     githubUrl: [/\bgithub\b/, /\bgithub\s*profile\b/],
     portfolioUrl: [/\bportfolio\b/, /\bwebsite\b/, /\bpersonal\s*site\b/, /\bhomepage\b/],
+    coverLetter: [
+      /\bcover\s*letter\b/,
+      /\bcovering\s*letter\b/,
+      /\bapplication\s*letter\b/,
+      /\bmessage\s*to\s*(?:the\s*)?(?:hiring\s*)?(?:manager|recruiter)\b/,
+      /\bwhy\s*(?:are|would)\s*you\s*(?:interested|like)\b/,
+      /\bwhy\s*should\s*we\s*hire\s*you\b/
+    ],
     skills: [/\bskills?\b/, /\btechnical\s*skills?\b/, /\bcore\s*competencies\b/, /\bexpertise\b/]
   };
 
@@ -224,6 +235,7 @@
       linkedinUrl: (profile.linkedinUrl || "").trim(),
       githubUrl: (profile.githubUrl || "").trim(),
       portfolioUrl: (profile.portfolioUrl || "").trim(),
+      coverLetter: (profile.coverLetter || "").trim(),
       skills: (profile.skills || "").trim()
     };
   }
@@ -524,6 +536,10 @@
       return { fieldKey: "portfolioUrl" };
     }
 
+    if (matchesPatterns(context, FIELD_PATTERNS.coverLetter) && profile.coverLetter) {
+      return { fieldKey: "coverLetter" };
+    }
+
     if (matchesPatterns(context, FIELD_PATTERNS.skills) && profile.skills) {
       return { fieldKey: "skills" };
     }
@@ -636,7 +652,7 @@
         continue;
       }
 
-      if (fillElement(element, value, match.mode)) {
+      if (fillElement(element, value, match)) {
         filledCount += 1;
       } else {
         skippedCount += 1;
@@ -646,31 +662,46 @@
     return { filledCount, skippedCount };
   }
 
-  function fillElement(element, value, mode) {
+  function fillElement(element, value, match = {}) {
+    const mode = match.mode;
     const target = resolveFillTarget(element, mode);
 
     if (!target || !isSupportedField(target) || isFilled(target)) {
       return false;
     }
 
+    const fillValue = normalizeFillValueForTarget(value, match.fieldKey, target);
+
     if (target.type === "radio" || mode === "radio") {
-      return fillRadio(target, value);
+      return fillRadio(target, fillValue);
     }
 
     if (target.tagName.toLowerCase() === "select" || mode === "select") {
-      return fillSelect(target, value);
+      return fillSelect(target, fillValue, match.fieldKey);
     }
 
     if (target.isContentEditable || target.matches("[role='textbox']")) {
-      fillEditableTarget(target, value);
+      fillEditableTarget(target, fillValue);
       dispatchInputEvents(target);
       return true;
     }
 
     target.focus();
-    setNativeValue(target, value);
+    setNativeValue(target, fillValue);
     dispatchInputEvents(target);
     return true;
+  }
+
+  function normalizeFillValueForTarget(value, fieldKey, target) {
+    if (fieldKey !== "totalExperience") {
+      return value;
+    }
+
+    if ((target.type || "").toLowerCase() === "number") {
+      return extractNumericValue(value) || value;
+    }
+
+    return value;
   }
 
   function resolveFillTarget(element, mode) {
@@ -694,13 +725,15 @@
     return element;
   }
 
-  function fillSelect(element, value) {
+  function fillSelect(element, value, fieldKey) {
     const normalizedChoice = String(value).toLowerCase();
+    const numericChoice = fieldKey === "totalExperience" ? extractNumericValue(normalizedChoice) : "";
     const options = Array.from(element.options);
 
     const matchingOption = options.find((option) => {
       const haystack = normalizeText(`${option.label} ${option.text} ${option.value}`);
-      return haystack.includes(normalizedChoice);
+      return haystack.includes(normalizedChoice) ||
+        Boolean(numericChoice && matchesNumericChoice(haystack, numericChoice));
     });
 
     if (!matchingOption) {
@@ -733,6 +766,18 @@
     target.checked = true;
     dispatchInputEvents(target);
     return true;
+  }
+
+  function extractNumericValue(value) {
+    return String(value).match(/\d+(?:\.\d+)?/)?.[0] || "";
+  }
+
+  function matchesNumericChoice(text, number) {
+    return new RegExp(`(^|\\D)${escapeRegExp(number)}(\\D|$)`).test(text);
+  }
+
+  function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
   function setNativeValue(element, value) {
