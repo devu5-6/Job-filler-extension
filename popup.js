@@ -1,4 +1,5 @@
 const STORAGE_KEY = "profile";
+const ENABLED_KEY = "autoFillEnabled";
 
 const FIELD_NAMES = [
   "fullName",
@@ -21,9 +22,14 @@ const FIELD_NAMES = [
 const form = document.getElementById("profile-form");
 const statusEl = document.getElementById("status");
 const autofillButton = document.getElementById("autofill-page");
+const masterSwitch = document.getElementById("master-switch");
+const masterLabel = document.getElementById("master-label");
+const masterHint = document.getElementById("master-hint");
+
+let enabledState = true;
 
 document.addEventListener("DOMContentLoaded", async () => {
-  await loadProfile();
+  await Promise.all([loadProfile(), loadEnabledState()]);
 });
 
 form.addEventListener("submit", async (event) => {
@@ -42,6 +48,23 @@ form.addEventListener("submit", async (event) => {
     setStatus("Saved successfully!", "success");
   } catch (error) {
     setStatus(`Unable to save details: ${error.message}`, "error");
+  }
+});
+
+masterSwitch.addEventListener("click", async () => {
+  const nextEnabled = masterSwitch.getAttribute("aria-checked") !== "true";
+
+  renderEnabledState(nextEnabled);
+
+  try {
+    await chrome.storage.local.set({ [ENABLED_KEY]: nextEnabled });
+    setStatus(
+      nextEnabled ? "Autofill turned on." : "Autofill turned off.",
+      "success"
+    );
+  } catch (error) {
+    renderEnabledState(!nextEnabled);
+    setStatus(`Unable to update the master switch: ${error.message}`, "error");
   }
 });
 
@@ -82,6 +105,32 @@ async function sendAutofillMessage(tabId) {
     await delay(100);
     return chrome.tabs.sendMessage(tabId, { type: "AUTOFILL_PAGE" });
   }
+}
+
+async function loadEnabledState() {
+  try {
+    const result = await chrome.storage.local.get(ENABLED_KEY);
+    renderEnabledState(isEnabled(result?.[ENABLED_KEY]));
+  } catch (error) {
+    renderEnabledState(true);
+    setStatus(`Unable to read the master switch: ${error.message}`, "error");
+  }
+}
+
+function isEnabled(storedValue) {
+  return storedValue !== false;
+}
+
+function renderEnabledState(enabled) {
+  enabledState = enabled;
+  masterSwitch.setAttribute("aria-checked", String(enabled));
+  masterLabel.textContent = enabled ? "Autofill Enabled" : "Autofill Disabled";
+  masterHint.textContent = enabled
+    ? "Supported forms are filled automatically on page load."
+    : "Autofill is stopped. No pages will be filled.";
+
+  document.body.classList.toggle("is-disabled", !enabled);
+  form.toggleAttribute("inert", !enabled);
 }
 
 async function loadProfile() {
