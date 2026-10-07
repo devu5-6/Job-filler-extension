@@ -69,6 +69,11 @@ masterSwitch.addEventListener("click", async () => {
 });
 
 autofillButton.addEventListener("click", async () => {
+  if (!enabledState) {
+    setStatus("Autofill is turned off. Enable the master switch first.", "error");
+    return;
+  }
+
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
