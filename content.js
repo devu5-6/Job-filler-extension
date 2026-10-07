@@ -5,6 +5,7 @@
   window.__jobFormAutofillerInitialized = true;
 
   const STORAGE_KEY = "profile";
+  const ENABLED_KEY = "autoFillEnabled";
   const AUTOFILL_MESSAGE = "AUTOFILL_PAGE";
   const RETRY_DELAYS_MS = [0, 500, 1500, 3000, 5000, 8000];
   const GOOGLE_FORMS_HOST = "docs.google.com";
@@ -176,8 +177,18 @@
   }
 
   async function runAutofill({ manual }) {
-    const result = await chrome.storage.local.get(STORAGE_KEY);
-    const profile = normalizeProfile(result?.[STORAGE_KEY]);
+    const settings = await chrome.storage.local.get([STORAGE_KEY, ENABLED_KEY]);
+
+    if (settings?.[ENABLED_KEY] === false) {
+      return {
+        ok: false,
+        filledCount: 0,
+        skippedCount: 0,
+        message: "Autofill is turned off. Enable the master switch in the extension popup."
+      };
+    }
+
+    const profile = normalizeProfile(settings?.[STORAGE_KEY]);
 
     if (!hasProfileData(profile)) {
       return {
