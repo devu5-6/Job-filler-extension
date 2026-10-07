@@ -114,6 +114,18 @@
     return true;
   });
 
+  if (chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName !== "local" || !(ENABLED_KEY in changes)) {
+        return;
+      }
+
+      if (changes[ENABLED_KEY].newValue !== false) {
+        runAutofill({ manual: false }).catch(() => {});
+      }
+    });
+  }
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
       scheduleAutofill();
