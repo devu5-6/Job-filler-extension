@@ -8,6 +8,23 @@
   </head>
   <body>
     <main class="popup-shell">
+      <div class="master-bar">
+        <div class="master-copy">
+          <span class="master-label" id="master-label">Autofill Enabled</span>
+          <span class="master-hint" id="master-hint">Supported forms are filled automatically on page load.</span>
+        </div>
+        <button
+          type="button"
+          id="master-switch"
+          class="switch"
+          role="switch"
+          aria-checked="true"
+          aria-labelledby="master-label"
+        >
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+        </button>
+      </div>
+
       <header class="hero">
         <p class="eyebrow">Chrome Extension</p>
         <h1>JobForm AutoFiller</h1>
